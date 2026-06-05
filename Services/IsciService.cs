@@ -304,7 +304,7 @@ public class IsciService : IIsciService
     {
         // 1. Güvenlik: Ücret > 0 mı? (Fail-fast)
         if (dto.YeniGunlukUcret <= 0)
-            throw new Exception("Usta, maaş 0 veya eksi olamaz. Geçerli bir günlük ücret gir.");
+            throw new BusinessException("Usta, maaş 0 veya eksi olamaz. Geçerli bir günlük ücret gir.");
 
         // 2. Tarihi normalize et (sadece gün bazında)
         var zamBaslangicTarihi = dto.ZamBaslangicTarihi.Date;
@@ -316,10 +316,10 @@ public class IsciService : IIsciService
             .FirstOrDefaultAsync(i => i.Id == isciId, cancellationToken);
 
         if (isci == null)
-            throw new Exception("Zam yapılmak istenen işçi veritabanında bulunamadı.");
+            throw new NotFoundException("İşçi", isciId);
 
         if (isci.IsDeleted)
-            throw new Exception("Patron, şirkette pasif edilmiş (tamamen çıkarılmış) bir ustaya zam yapamazsın.");
+            throw new BusinessException("Patron, şirkette pasif edilmiş (tamamen çıkarılmış) bir ustaya zam yapamazsın.");
 
         var eskiUcret = isci.GunlukUcret;
 
