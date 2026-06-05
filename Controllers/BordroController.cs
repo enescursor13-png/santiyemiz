@@ -1305,11 +1305,9 @@ namespace SantiyeAPI.Controllers
             {
                 DateTime islemTarihi = ZamanMotoru.SimdiTurkiye();
 
-                // 2. KASAYA GİRİŞ (Artık Ekrana değil, kendi bulduğumuz "gercekBorcTutari"na güveniyoruz)
+                // Kasa hareketi kasıtlı olarak yazılmıyor — ekranda kullanıcıya bildirildi.
 
-
-
-                // 3. AÇIK HESABI SIFIRLAMA
+                // AÇIK HESABI SIFIRLAMA
                 var iadeAvansi = new Avans
                 {
                     IsciId = request.IsciId,
