@@ -13,7 +13,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("SantiyeAPI")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Debug")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+e0fb3e4989f78f5c556ff47af05719c4af636737")]
 [assembly: System.Reflection.AssemblyProductAttribute("SantiyeAPI")]
 [assembly: System.Reflection.AssemblyTitleAttribute("SantiyeAPI")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]
