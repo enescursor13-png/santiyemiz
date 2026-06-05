@@ -1944,19 +1944,6 @@
 
                         // Kart tıklanma olayı
                         card.addEventListener('click', () => {
-                            const bitisStr = s.lisansBitisTarihi || s.LisansBitisTarihi;
-                            let kGun = 0;
-                            if (bitisStr) {
-                                kGun = Math.ceil((new Date(bitisStr) - new Date()) / (1000 * 60 * 60 * 24));
-                            }
-                            if (kGun <= 0) {
-                                Swal.fire({
-                                    icon: 'warning', title: 'Erişim Engellendi 🛑',
-                                    text: 'Patron, bu şantiyenin lisans süresi dolmuş! İçeri girmek için süreyi uzatmalısın.',
-                                    confirmButtonColor: '#e67e22', confirmButtonText: 'Tamam'
-                                });
-                                return;
-                            }
                             santiyeDetayAc(s.id, s.ad);
                         });
 
