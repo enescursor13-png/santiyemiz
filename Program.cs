@@ -155,7 +155,16 @@ app.Lifetime.ApplicationStarted.Register(() =>
             try { await http.GetAsync(url); break; }
             catch { await Task.Delay(500); }
         }
-        var launched = TryLaunch("msedge", $"--app={url}");
+        bool launched = false;
+        if (OperatingSystem.IsWindows())
+        {
+            launched = TryLaunch("msedge", $"--app={url}");
+        }
+        else if (OperatingSystem.IsMacOS())
+        {
+            launched = TryLaunch("open", $"-a \"Microsoft Edge\" --args --app={url}");
+            if (!launched) launched = TryLaunch("open", url);
+        }
         if (!launched) TryLaunch(url, null);
     });
 
