@@ -80,18 +80,5 @@ namespace SantiyeApp.Controllers
             return Ok(new { zirhKodu = zirh });
         }
 
-        // 🚀 SİSTEMİ KOMPLE KAPATMA APİSİ
-        [HttpPost("sistemi-kapat")]
-        public IActionResult SistemiKapat()
-        {
-            // C#'a kendini imha etmesi için 1 saniye süre veriyoruz ki cevabı HTML'e ulaştırabilsin
-            _ = Task.Run(async () =>
-            {
-                await Task.Delay(1000);
-                System.Environment.Exit(0);
-            });
-            
-            return Ok(new { mesaj = "Sistem başarıyla kapatıldı." });
-        }
     }
 }

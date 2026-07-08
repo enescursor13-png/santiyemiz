@@ -230,7 +230,11 @@ namespace SantiyeAPI.Controllers
                 .Select(k => new
                 {
                     k.Id,
-                    Tarih = k.IslemTarihi.ToString("yyyy-MM-ddTHH:mm:ssZ"),
+                    // 🛡️ ZIRH: IslemTarihi zaten Türkiye saatiyle (yerel, dilimsiz) tutuluyor.
+                    // Sondaki "Z" harfi ISO 8601'de "UTC" anlamına gelir — buraya eklemek
+                    // yalan söylemek olurdu (JS'in new Date() ile okuyan bir kod yazılırsa
+                    // saati 3 saat ileri kaydırırdı). "Z" olmadan yazıyoruz.
+                    Tarih = k.IslemTarihi.ToString("yyyy-MM-ddTHH:mm:ss"),
                     k.Tutar,
                     k.Yon,
                     k.HareketTipi,

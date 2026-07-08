@@ -134,7 +134,7 @@ public class IsciService : IIsciService
                 {
                     IsciId = mevcutUsta.Id,
                     Yevmiye = mevcutUsta.GunlukUcret,
-                    BaslangicTarihi = DateTime.Today,
+                    BaslangicTarihi = ZamanMotoru.SimdiTurkiye().Date,
                     Aciklama = "Arşivden geri getirildi." // Opsiyonel şık bir not
                 });
 
@@ -153,7 +153,7 @@ public class IsciService : IIsciService
         yeniIsci.MaasGecmisleri = new List<MaasGecmisi> {
             new MaasGecmisi {
                 Yevmiye = yeniIsci.GunlukUcret,
-                BaslangicTarihi = DateTime.Today,
+                BaslangicTarihi = ZamanMotoru.SimdiTurkiye().Date,
                 Aciklama = "İşe giriş maaş tanımı."
             }
         };
