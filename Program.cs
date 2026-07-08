@@ -136,13 +136,15 @@ builder.Services.AddSwaggerGen();
 builder.Services.AddAutoMapper(typeof(Program).Assembly);
 
 // 🐘 POSTGRESQL BAĞLANTISI
-// Öncelik: appsettings.json / ConnectionStrings__DefaultConnection ortam değişkeni.
-// Railway'in kendi ürettiği "DATABASE_URL" (postgres://user:pass@host:port/db şeklinde
-// bir URI, .NET connection string formatında değil) tanımlıysa, onu otomatik olarak
-// Npgsql'in anlayacağı formata çeviriyoruz — Railway panelinden manuel connection
-// string kopyalayıp yapıştırmaya gerek kalmasın diye.
-string connectionString = builder.Configuration.GetConnectionString("DefaultConnection")
-    ?? PostgresBaglantiUret(Environment.GetEnvironmentVariable("DATABASE_URL"))
+// Öncelik: Railway'in kendi ürettiği "DATABASE_URL" (postgres://user:pass@host:port/db
+// şeklinde bir URI, .NET connection string formatında değil) — bunu Npgsql'in anlayacağı
+// formata otomatik çeviriyoruz. Tanımlı değilse appsettings.json / ConnectionStrings__
+// DefaultConnection ortam değişkenine (yerel geliştirme için) düşüyoruz.
+// NOT: appsettings.json'da her zaman bir yerel-geliştirme varsayılanı olduğu için
+// GetConnectionString() ASLA null dönmez — bu yüzden DATABASE_URL'i önce kontrol
+// etmek zorundayız, yoksa Railway'de yanlışlıkla o yerel varsayılana bağlanmaya çalışılır.
+string connectionString = PostgresBaglantiUret(Environment.GetEnvironmentVariable("DATABASE_URL"))
+    ?? builder.Configuration.GetConnectionString("DefaultConnection")
     ?? throw new InvalidOperationException(
         "Veritabanı bağlantı bilgisi bulunamadı! ConnectionStrings:DefaultConnection veya DATABASE_URL ayarlanmalı.");
 
