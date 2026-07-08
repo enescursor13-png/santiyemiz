@@ -81,7 +81,13 @@ builder.Services.AddCors(options =>
 {
     options.AddPolicy("BabaninEkrani", policy =>
     {
-        policy.WithOrigins(izinliOrigins).AllowAnyHeader().AllowAnyMethod();
+        // 🛡️ ZIRH: SetPreflightMaxAge olmadan tarayıcı, Authorization header'lı
+        // (yani hemen hemen HER) isteğinden önce ayrı bir OPTIONS "preflight"
+        // isteği atmak zorunda kalıyordu — her tıklama fiilen 2 ağ turu
+        // yapıyordu (~700-900ms). Preflight sonucunu 1 saat önbelleğe alarak
+        // bu ekstra turu büyük ölçüde ortadan kaldırıyoruz.
+        policy.WithOrigins(izinliOrigins).AllowAnyHeader().AllowAnyMethod()
+              .SetPreflightMaxAge(TimeSpan.FromHours(1));
     });
 });
 
