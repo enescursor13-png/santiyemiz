@@ -22,6 +22,16 @@ using SantiyeAPI.Helpers;
 
 var builder = WebApplication.CreateBuilder(args);
 
+// 🚀 PERFORMANS: Yanıt sıkıştırma (hiç açık değildi). İşçi listeleri, bordro
+// raporları gibi büyük JSON yanıtları ham haliyle gidiyordu. Brotli/Gzip ile
+// özellikle mobil bağlantılarda transfer süresini belirgin şekilde azaltır.
+builder.Services.AddResponseCompression(options =>
+{
+    options.EnableForHttps = true;
+    options.Providers.Add<Microsoft.AspNetCore.ResponseCompression.BrotliCompressionProvider>();
+    options.Providers.Add<Microsoft.AspNetCore.ResponseCompression.GzipCompressionProvider>();
+});
+
 // 🚀 PORT AYARI: Railway/bulut ortamları PORT ortam değişkenini kendisi enjekte eder
 // ve dışarıdan 0.0.0.0 üzerinden erişilmesini bekler. Yerelde (masaüstü/kiosk
 // modunda) PORT tanımlı değilse eski davranış (localhost:5095) korunur.
@@ -165,6 +175,8 @@ builder.Services.AddValidatorsFromAssemblyContaining<IsciCreateDtoValidator>();
 
 
 var app = builder.Build();
+
+app.UseResponseCompression();
 
 app.UseMiddleware<GlobalExceptionMiddleware>();
 

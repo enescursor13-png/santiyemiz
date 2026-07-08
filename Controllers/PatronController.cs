@@ -223,8 +223,12 @@ namespace SantiyeAPI.Controllers
                 }
             }
 
+            // 🛡️ ZIRH: .Include() burada gereksizdi (Select projeksiyonu zaten
+            // Santiye.Ad için JOIN üretir) ve AsNoTracking eksikti — salt okunur
+            // bu uç nokta her "Kasa Dökümü" açılışında gereksiz yere değişiklik
+            // izleyicisine (change tracker) kayıt düşüyordu.
             var hareketler = await _context.KasaHareketleri
-                .Include(k => k.Santiye)
+                .AsNoTracking()
                 .Where(k => k.PatronId == patronId && !k.IsDeleted && !k.SifirlamaFisiMi && k.IslemTarihi > milatTarihi)
                 .OrderByDescending(k => k.IslemTarihi)
                 .Select(k => new

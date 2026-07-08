@@ -24,7 +24,7 @@ namespace SantiyeAPI.Controllers
         [HttpGet]
         public async Task<IActionResult> GetAvanslar([FromQuery] string? ay, [FromQuery] int? santiyeId)
         {
-            var query = _context.Avanslar.AsQueryable();
+            var query = _context.Avanslar.AsNoTracking().AsQueryable();
 
             // 2. Şantiye Filtresi
             if (santiyeId.HasValue && santiyeId.Value > 0)
