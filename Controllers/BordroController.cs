@@ -931,6 +931,8 @@ namespace SantiyeAPI.Controllers
                 ayirici.Style.Font.FontColor = XLColor.White;
                 ayirici.Style.Fill.BackgroundColor = XLColor.DarkOrange;
                 ayirici.Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
+                ayirici.Style.Alignment.WrapText = false;
+                worksheet.Row(satir).Height = 20;
                 satir++;
 
                 foreach (var v in cokluSantiyeliler)
@@ -1074,6 +1076,11 @@ namespace SantiyeAPI.Controllers
                     }
 
                     wsZraporu.Range(zSatir, 1, zSatir, 5).Style.Font.Bold = true;
+                    // 🛡️ ZIRH: Sarma kapalı + satır otomatik yükseklik. AdjustToContents()
+                    // birleştirilmiş (merge) hücreleri dikkate almadığı için 1. ve 2. sütun
+                    // dar kalıyordu; metin sarılıp alttaki satırla üst üste biniyordu.
+                    wsZraporu.Range(zSatir, 1, zSatir, 5).Style.Alignment.WrapText = false;
+                    wsZraporu.Row(zSatir).Height = 20;
                     zSatir++;
 
                     // SifirlamaFisiMi sorguda filtrelendiği için ekstradan Aciklama kontrolüne gerek yok ama çift dikiş kalsın.
@@ -1148,6 +1155,12 @@ namespace SantiyeAPI.Controllers
             }
 
             wsZraporu.Columns().AdjustToContents();
+            // 🛡️ ZIRH: AdjustToContents() birleşik (merge) hücrelerin içeriğini hesaba katmaz,
+            // bu yüzden "🏦 ANA KASA (BANKA): ... [Kâr Dağıtımına Dahil Değil]" gibi uzun
+            // başlıklar için 1. ve 2. sütun çok dar kalıp metni sarmaya zorluyordu.
+            // Minimum genişlik garantisi veriyoruz.
+            if (wsZraporu.Column(1).Width < 20) wsZraporu.Column(1).Width = 20;
+            if (wsZraporu.Column(2).Width < 35) wsZraporu.Column(2).Width = 35;
             wsZraporu.Column(3).Width = 25;
             wsZraporu.Column(4).Width = 25;
             wsZraporu.Column(5).Width = 25;
