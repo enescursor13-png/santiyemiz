@@ -410,7 +410,13 @@ namespace SantiyeAPI.Controllers
             var tumTarihler = acikPuantajlar.Select(g => g.Tarih).Union(acikAvanslar.Select(a => a.Tarih)).ToList();
             DateTime gercekBas = tumTarihler.Min();
             DateTime gercekBit = tumTarihler.Max();
-            string donemAciklama = gercekBas.Date == gercekBit.Date ? $"{gercekBas:dd MMM yyyy}" : $"{gercekBas:dd MMM} - {gercekBit:dd MMM yyyy}";
+            // 🛡️ ZIRH: Kültür bilgisi açıkça "tr-TR" verilmezse, sunucunun işletim sistemi
+            // İngilizce ise ay isimleri "Jul" gibi İngilizce çıkar (masaüstünde OS Türkçe
+            // olduğu için bu fark hiç görünmüyordu, Railway'in Linux sunucusunda ortaya çıktı).
+            var trKultur = CultureInfo.GetCultureInfo("tr-TR");
+            string donemAciklama = gercekBas.Date == gercekBit.Date
+                ? gercekBas.ToString("dd MMM yyyy", trKultur)
+                : $"{gercekBas.ToString("dd MMM", trKultur)} - {gercekBit.ToString("dd MMM yyyy", trKultur)}";
 
             await using var transaction = await _context.Database.BeginTransactionAsync(System.Data.IsolationLevel.Serializable);
             try
