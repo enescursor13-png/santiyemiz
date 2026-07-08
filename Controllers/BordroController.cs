@@ -1,4 +1,6 @@
+using Microsoft.AspNetCore.Authorization;
 using System.Globalization;
+using System.Security.Claims;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using SantiyeAPI.Data;
@@ -13,13 +15,16 @@ namespace SantiyeAPI.Controllers
 {
     [Route("api/[controller]")]
     [ApiController]
+    [Authorize]
     public class BordroController : ControllerBase
     {
         private readonly AppDbContext _context;
+        private readonly ILogger<BordroController> _logger;
 
-        public BordroController(AppDbContext context)
+        public BordroController(AppDbContext context, ILogger<BordroController> logger)
         {
             _context = context;
+            _logger = logger;
         }
 
         // 📊 1. BORDRO HESAPLAMA (ZAM PARÇALAYICI ZIRHI EKLENDİ)
@@ -407,16 +412,26 @@ namespace SantiyeAPI.Controllers
             DateTime gercekBit = tumTarihler.Max();
             string donemAciklama = gercekBas.Date == gercekBit.Date ? $"{gercekBas:dd MMM yyyy}" : $"{gercekBas:dd MMM} - {gercekBit:dd MMM yyyy}";
 
-            await using var transaction = await _context.Database.BeginTransactionAsync();
+            await using var transaction = await _context.Database.BeginTransactionAsync(System.Data.IsolationLevel.Serializable);
             try
             {
-                await _context.GunlukKayitlar
+                var puantajGuncellenen = await _context.GunlukKayitlar
                     .Where(g => g.IsciId == dto.IsciId && g.SantiyeId == dto.SantiyeId && !g.OdendiMi && g.Tarih >= baslangic && g.Tarih < bitis)
                     .ExecuteUpdateAsync(s => s.SetProperty(g => g.OdendiMi, true));
 
-                await _context.Avanslar
+                var avansGuncellenen = await _context.Avanslar
                     .Where(a => a.IsciId == dto.IsciId && a.SantiyeId == dto.SantiyeId && !a.OdendiMi && a.Tarih >= baslangic && a.Tarih < bitis)
                     .ExecuteUpdateAsync(s => s.SetProperty(a => a.OdendiMi, true));
+
+                // 🛡️ ÇİFTE ÖDEME ZIRHI: Bu kayıtlar transaction başlamadan önce "açık" görünmüştü,
+                // ama transaction içindeki UPDATE hiçbir satırı etkilemediyse (0 satır), demek ki
+                // başka bir istek (çift tıklama, iki sekme vb.) bu dönemi bizden önce kapatmış.
+                // Bu durumda parayı bir daha çıkarmadan işlemi iptal ediyoruz.
+                if (puantajGuncellenen == 0 && avansGuncellenen == 0)
+                {
+                    await transaction.RollbackAsync();
+                    return Conflict(new { mesaj = "Bu dönem az önce başka bir işlemle zaten kapatılmış. Sayfayı yenileyip tekrar kontrol edin." });
+                }
 
                 if (netOdenen > 0)
                 {
@@ -620,37 +635,50 @@ namespace SantiyeAPI.Controllers
         [HttpPost("KasariSifirlaVeKarDagit")]
         public async Task<IActionResult> KasariSifirlaVeKarDagit()
         {
-            var patronlar = await _context.Patronlar
-                .Where(p => p.KasaId != null)
-                .OrderBy(p => p.Id) // 🚀 ZIRH: İlk eklenen kasayı bulabilmek için ID'ye göre sıraladık
-                .ToListAsync();
+            // 🛡️ AUDIT ZIRHI: Bu işlem geri alınamaz olduğu için kimin çalıştırdığını
+            // kaydediyoruz (JWT token'daki kimlikten — istemcinin uydurabileceği bir
+            // alandan değil).
+            var tetikleyenKullanici = User.FindFirstValue(ClaimTypes.Name)
+                ?? User.FindFirstValue(ClaimTypes.NameIdentifier)
+                ?? "bilinmeyen";
 
-            if (!patronlar.Any())
-                return BadRequest(new { mesaj = "Sistemde tanımlı kasa bulunamadı." });
-
-            // 🚀 SENİOR ZIRHI: İLK EKLENEN KASAYI "BANKA (ANA KASA)" OLARAK TESPİT ET
-            var anaKasaBanka = patronlar.First();
-
-            // ✅ Tüm hareketleri tek sorguda çek
-            var kasaIdleri = patronlar.Select(p => p.KasaId).ToList();
-            var tumHareketler = await _context.KasaHareketleri
-                .Where(h => kasaIdleri.Contains(h.KasaId) && !h.IsDeleted)
-                .ToListAsync();
-
-            // ✅ Tüm şantiye adlarını tek sorguda çek
-            var santiyeIdleri = tumHareketler
-                .Where(h => h.SantiyeId.HasValue)
-                .Select(h => h.SantiyeId!.Value)
-                .Distinct()
-                .ToList();
-
-            var santiyeAdlari = await _context.Santiyeler
-                .Where(s => santiyeIdleri.Contains(s.Id))
-                .ToDictionaryAsync(s => s.Id, s => s.Ad);
-
-            await using var transaction = await _context.Database.BeginTransactionAsync();
+            // 🛡️ OKU-YAZ TUTARLILIK ZIRHI: Bu geri alınamaz işlemde okuma ile yazma
+            // arasında başka bir isteğin araya girip kasaya yeni hareket eklemesini
+            // engellemek için tüm okuma + yazma tek Serializable transaction içinde.
+            await using var transaction = await _context.Database.BeginTransactionAsync(System.Data.IsolationLevel.Serializable);
             try
             {
+                var patronlar = await _context.Patronlar
+                    .Where(p => p.KasaId != null)
+                    .OrderBy(p => p.Id) // 🚀 ZIRH: İlk eklenen kasayı bulabilmek için ID'ye göre sıraladık
+                    .ToListAsync();
+
+                if (!patronlar.Any())
+                {
+                    await transaction.RollbackAsync();
+                    return BadRequest(new { mesaj = "Sistemde tanımlı kasa bulunamadı." });
+                }
+
+                // 🚀 SENİOR ZIRHI: İLK EKLENEN KASAYI "BANKA (ANA KASA)" OLARAK TESPİT ET
+                var anaKasaBanka = patronlar.First();
+
+                // ✅ Tüm hareketleri tek sorguda çek
+                var kasaIdleri = patronlar.Select(p => p.KasaId).ToList();
+                var tumHareketler = await _context.KasaHareketleri
+                    .Where(h => kasaIdleri.Contains(h.KasaId) && !h.IsDeleted)
+                    .ToListAsync();
+
+                // ✅ Tüm şantiye adlarını tek sorguda çek
+                var santiyeIdleri = tumHareketler
+                    .Where(h => h.SantiyeId.HasValue)
+                    .Select(h => h.SantiyeId!.Value)
+                    .Distinct()
+                    .ToList();
+
+                var santiyeAdlari = await _context.Santiyeler
+                    .Where(s => santiyeIdleri.Contains(s.Id))
+                    .ToDictionaryAsync(s => s.Id, s => s.Ad);
+
                 DateTime islemZamani = ZamanMotoru.SimdiTurkiye();
                 int islemSayisi = 0;
                 var yeniHareketler = new List<KasaHareketi>();
@@ -706,12 +734,17 @@ namespace SantiyeAPI.Controllers
 
                 await transaction.CommitAsync();
 
+                _logger.LogWarning(
+                    "KASA SIFIRLAMA/KÂR DAĞITIMI çalıştırıldı — Kullanıcı: {Kullanici}, İşlemSayisi: {Sayi}, Zaman: {Zaman}",
+                    tetikleyenKullanici, islemSayisi, islemZamani);
+
                 return Ok(new { mesaj = $"Başarıyla kâr payı dağıtıldı ve {islemSayisi} adet şantiye kasası (Banka dahil) sıfırlandı." });
             }
             catch (Exception ex)
             {
                 await transaction.RollbackAsync();
-                return StatusCode(500, new { mesaj = "Sıfırlama sırasında hata oluştu: " + ex.Message });
+                _logger.LogError(ex, "Kasa sıfırlama sırasında hata oluştu — Kullanıcı: {Kullanici}", tetikleyenKullanici);
+                return StatusCode(500, new { mesaj = "Sıfırlama sırasında hata oluştu." });
             }
         }
         // 🏗️ ŞANTİYE GENEL MALİYET RAPORU (TÜM ZAMANLAR - SIFIRLAMALARI GÖRMEZDEN GELİR)
@@ -1208,27 +1241,35 @@ namespace SantiyeAPI.Controllers
 
                 decimal iadeTutari = Math.Abs(netKalan);
 
-                await using var transaction = await _context.Database.BeginTransactionAsync();
+                await using var transaction = await _context.Database.BeginTransactionAsync(System.Data.IsolationLevel.Serializable);
                 try
                 {
                     DateTime islemTarihi = ZamanMotoru.SimdiTurkiye();
 
-                    // 🛡️ ZIRH 2: KASAYA GİREN PARAYI VE İADE AVANSINI ŞANTİYEYE BAĞLA
+                    // 🛡️ ÇİFTE ÖDEME ZIRHI: Mühürlemeyi ÖNCE yapıp kaç satır etkilendiğine bakıyoruz.
+                    // Transaction başlamadan önceki hesaplama (netKalan) artık bayatlamış olabilir —
+                    // başka bir istek bu dönemi bizden önce kapatmış olabilir.
+                    var puantajGuncellenen = await _context.GunlukKayitlar
+                        .Where(g => g.IsciId == request.IsciId && g.SantiyeId == request.SantiyeId && !g.OdendiMi && g.Tarih < kesimTarihiSiniri)
+                        .ExecuteUpdateAsync(s => s.SetProperty(x => x.OdendiMi, true));
+
+                    var avansGuncellenen = await _context.Avanslar
+                        .Where(a => a.IsciId == request.IsciId && a.SantiyeId == request.SantiyeId && !a.OdendiMi && a.Tarih < kesimTarihiSiniri)
+                        .ExecuteUpdateAsync(s => s.SetProperty(x => x.OdendiMi, true));
+
+                    if (puantajGuncellenen == 0 && avansGuncellenen == 0)
+                    {
+                        await transaction.RollbackAsync();
+                        return Conflict(new { mesaj = "Bu dönem az önce başka bir işlemle zaten kapatılmış. Sayfayı yenileyip tekrar kontrol edin." });
+                    }
+
+                    // 🚀 ZIRH 2: KASAYA GİREN PARAYI VE İADE AVANSINI ŞANTİYEYE BAĞLA
                     var kasaHareketi = new KasaHareketi { KasaId = guvenliKasaId, PatronId = patron.Id, SantiyeId = request.SantiyeId, Tutar = iadeTutari, Yon = KasaIslemYonu.Giris, HareketTipi = KasaHareketTipi.ManuelGelir, IslemTarihi = islemTarihi, Aciklama = $"{isci.Ad} {isci.Soyad} - Nakit İade. Not: {request.Aciklama}" };
 
                     await _context.KasaHareketleri.AddAsync(kasaHareketi);
 
                     var iadeAvansi = new Avans { IsciId = request.IsciId, KasaId = guvenliKasaId, SantiyeId = request.SantiyeId, Tutar = -iadeTutari, Tarih = islemTarihi, OdemeTuru = "Nakit İade", Aciklama = $"İade. Not: {request.Aciklama}", OdendiMi = true, IsDeleted = false };
                     await _context.Avanslar.AddAsync(iadeAvansi);
-
-                    // 🛡️ ZIRH 3: MÜHÜRLERKEN SADECE O ŞANTİYEYİ MÜHÜRLE!
-                    await _context.GunlukKayitlar
-                        .Where(g => g.IsciId == request.IsciId && g.SantiyeId == request.SantiyeId && !g.OdendiMi && g.Tarih < kesimTarihiSiniri)
-                        .ExecuteUpdateAsync(s => s.SetProperty(x => x.OdendiMi, true));
-
-                    await _context.Avanslar
-                        .Where(a => a.IsciId == request.IsciId && a.SantiyeId == request.SantiyeId && !a.OdendiMi && a.Tarih < kesimTarihiSiniri)
-                        .ExecuteUpdateAsync(s => s.SetProperty(x => x.OdendiMi, true));
 
                     await _context.SaveChangesAsync();
                     await transaction.CommitAsync();
@@ -1300,10 +1341,27 @@ namespace SantiyeAPI.Controllers
             // Gerçek borç tutarını mutlak değere (artıya) çeviriyoruz
             decimal gercekBorcTutari = Math.Abs(netKalan);
 
-            await using var transaction = await _context.Database.BeginTransactionAsync();
+            await using var transaction = await _context.Database.BeginTransactionAsync(System.Data.IsolationLevel.Serializable);
             try
             {
                 DateTime islemTarihi = ZamanMotoru.SimdiTurkiye();
+
+                // 🛡️ ÇİFTE ÖDEME ZIRHI: Mühürlemeyi ÖNCE yapıp kaç satır etkilendiğine bakıyoruz.
+                // netKalan transaction başlamadan önce hesaplanmıştı, bayatlamış olabilir —
+                // başka bir istek bu dönemi bizden önce devretmiş/kapatmış olabilir.
+                var puantajGuncellenen = await _context.GunlukKayitlar
+                    .Where(g => g.IsciId == request.IsciId && g.SantiyeId == request.SantiyeId && !g.OdendiMi && g.Tarih < kesimTarihiSiniri)
+                    .ExecuteUpdateAsync(s => s.SetProperty(x => x.OdendiMi, true));
+
+                var avansGuncellenen = await _context.Avanslar
+                    .Where(a => a.IsciId == request.IsciId && a.SantiyeId == request.SantiyeId && !a.OdendiMi && a.Tarih < kesimTarihiSiniri)
+                    .ExecuteUpdateAsync(s => s.SetProperty(x => x.OdendiMi, true));
+
+                if (puantajGuncellenen == 0 && avansGuncellenen == 0)
+                {
+                    await transaction.RollbackAsync();
+                    return Conflict(new { mesaj = "Bu dönem az önce başka bir işlemle zaten kapatılmış/devredilmiş. Sayfayı yenileyip tekrar kontrol edin." });
+                }
 
                 // Kasa hareketi kasıtlı olarak yazılmıyor — ekranda kullanıcıya bildirildi.
 
@@ -1336,15 +1394,6 @@ namespace SantiyeAPI.Controllers
                     IsDeleted = false
                 };
                 await _context.Avanslar.AddAsync(yeniAyBorcu);
-
-                // 5. MÜHÜRLEME
-                await _context.GunlukKayitlar
-                    .Where(g => g.IsciId == request.IsciId && g.SantiyeId == request.SantiyeId && !g.OdendiMi && g.Tarih < kesimTarihiSiniri)
-                    .ExecuteUpdateAsync(s => s.SetProperty(x => x.OdendiMi, true));
-
-                await _context.Avanslar
-                    .Where(a => a.IsciId == request.IsciId && a.SantiyeId == request.SantiyeId && !a.OdendiMi && a.Tarih < kesimTarihiSiniri)
-                    .ExecuteUpdateAsync(s => s.SetProperty(x => x.OdendiMi, true));
 
                 await _context.SaveChangesAsync();
                 await transaction.CommitAsync();
@@ -1421,7 +1470,7 @@ namespace SantiyeAPI.Controllers
                     IsciId = request.IsciId,
                     KasaId = guvenliKasaId,
                     SantiyeId = request.SantiyeId.Value, // 👈 .Value ekledik, tip güvenliği sağlandı!
-                    Tutar = request.Tutar,
+                    Tutar = Math.Abs(request.Tutar),
                     Tarih = isciAvansTarihi, // Ustanın "Seçilen Ayın 25'i" borcu düşer!
                     OdemeTuru = "Nakit (Hızlı Ödeme)",
                     Aciklama = request.Aciklama ?? "hızlı ödeme",
@@ -1436,7 +1485,7 @@ namespace SantiyeAPI.Controllers
                     KasaId = guvenliKasaId,
                     PatronId = patron.Id,
                     SantiyeId = request.SantiyeId.Value, // 👈 .Value ekledik, tip güvenliği sağlandı!
-                    Tutar = request.Tutar,
+                    Tutar = Math.Abs(request.Tutar),
                     Yon = KasaIslemYonu.Cikis,
                     HareketTipi = KasaHareketTipi.Avans,
                     IslemTarihi = gercekIslemZamani, // Patronun dökümünde BUGÜN gözükür!

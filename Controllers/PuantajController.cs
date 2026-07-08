@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.AspNetCore.RateLimiting; // RateLimit için eklendi
@@ -10,6 +11,7 @@ namespace SantiyeAPI.Controllers;
 
 [ApiController]
 [Route("api/[controller]")]
+[Authorize]
 public class PuantajController : ControllerBase
 {
     private readonly AppDbContext _context;

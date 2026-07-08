@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using SantiyeAPI.Data;
@@ -9,6 +10,7 @@ namespace SantiyeAPI.Controllers;
 
 [ApiController]
 [Route("api/[controller]")]
+[Authorize]
 public class SantiyeController : ControllerBase
 {
     private readonly AppDbContext _context;
@@ -197,6 +199,19 @@ public class SantiyeController : ControllerBase
             // DURUM B: Usta eskiden çalışmış, ayrılmış, şimdi GERİ DÖNDÜ! (Reaktivasyon)
             else
             {
+                // 🛡️ ZIRH: Composite key (IsciId+SantiyeId) tek satır tuttuğu için,
+                // üzerine yazmadan ÖNCE önceki dönemi (ilk giriş/çıkış tarihini)
+                // kalıcı olarak arşivliyoruz — yoksa "ilk ne zaman başladı" bilgisi
+                // sessizce kaybolurdu.
+                await _context.SantiyeIsciGecmisleri.AddAsync(new SantiyeIsciGecmisi
+                {
+                    IsciId = mevcutSantiyeKaydi.IsciId,
+                    SantiyeId = mevcutSantiyeKaydi.SantiyeId,
+                    KatilmaTarihi = mevcutSantiyeKaydi.KatilmaTarihi,
+                    AyrilmaTarihi = mevcutSantiyeKaydi.AyrilmaTarihi,
+                    ArsivlenmeTarihi = turkiyeSaati
+                });
+
                 mevcutSantiyeKaydi.AktifMi = true; // Şalteri kaldır, adamı aktif et
                 mevcutSantiyeKaydi.KatilmaTarihi = turkiyeSaati; // İşe girişini bugün olarak güncelle
                 mevcutSantiyeKaydi.AyrilmaTarihi = null; // Çıkış tarihini temizle (Çünkü artık çalışıyor)

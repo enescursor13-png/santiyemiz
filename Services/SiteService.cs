@@ -18,8 +18,26 @@ public sealed class SiteService
 
     // ── Güvenlik Sabitleri ─────────────────────────────────────
     private const int SAAT_TOLERANS_DK = 30;
-    private const int DB_TOLERANS_DK = 5;
-    private const string HASH_TUZU = "TR_LISANS_2024_SALT";
+
+    // 🚀 Offline toleransı: Şantiyede internet olmayabilir, laptop uykuya dalıp
+    // uyandığında RTC (donanım saati) birkaç dakika sürüklenebilir. Bir lisansı
+    // "hackleyip" süresini uzatmak için saati GÜNLER/HAFTALAR geri almak gerekir
+    // (jeton/lisans süresi günlerle ölçülüyor) — bu yüzden 20 dakikalık bir tolerans
+    // gerçek hileyi hâlâ yakalarken masum saat sürüklenmelerini engellemez.
+    private const int DB_TOLERANS_DK = 20;
+
+    // 🔐 Anahtar artık kaynak kodda sabit değil — appsettings.json / ortam değişkeninden
+    // (Security:HashTuzu) okunuyor. Böylece bu repoyu görebilen ya da .dll'i decompile
+    // eden biri, jeton/lisans kodu üretme formülünün anahtarını göremez.
+    private readonly string HASH_TUZU;
+
+    // 🚀 Bu bayrak SADECE masaüstü/kiosk modelinde (her müşteri kendi bilgisayarında
+    // tek başına çalıştırıyor) anlamlıdır: "bu veritabanı başka bir bilgisayara
+    // kopyalandı mı" kontrolü yapar. Bulutta (Railway) tek bir sunucuda birden çok
+    // firma (multi-tenant) barındırılınca bu kontrol artık geçerli değildir — üstelik
+    // konteyner yeniden başlatıldığında donanım kimliği değişip TÜM firmaları
+    // yanlışlıkla kilitleyebilir. appsettings.json'da "Security:DonanimKilidiAktif": false.
+    private readonly bool _donanimKilidiAktif;
 
     private static readonly string[] _zamanKaynaklari =
     [
@@ -28,10 +46,13 @@ public sealed class SiteService
         "https://www.microsoft.com"
     ];
 
-    public SiteService(AppDbContext db, ILogger<SiteService> logger)
+    public SiteService(AppDbContext db, ILogger<SiteService> logger, IConfiguration config)
     {
         _db = db;
         _logger = logger;
+        HASH_TUZU = config["Security:HashTuzu"]
+            ?? throw new InvalidOperationException("Security:HashTuzu appsettings.json içinde tanımlı olmalı!");
+        _donanimKilidiAktif = config.GetValue("Security:DonanimKilidiAktif", true);
     }
 
     // ══════════════════════════════════════════════════════════════
@@ -104,12 +125,12 @@ public sealed class SiteService
 
     #region DB Tamper Koruması
 
-    public static string DamgaHashiOlustur(DateTime tarih, string donanimKimligi, int jetonSayisi)
+    public string DamgaHashiOlustur(DateTime tarih, string donanimKimligi, int jetonSayisi)
     {
         string veri = $"{tarih:yyyyMMddHHmmss}|{donanimKimligi}|{jetonSayisi}|{HASH_TUZU}";
         return Sha256(veri);
     }
-    private static bool DamgaGecerliMi(Company company)
+    private bool DamgaGecerliMi(Company company)
     {
         // ✅ Hem hash silinmişse hem de tarih silinmişse anında kapıyı kilitle!
         if (string.IsNullOrEmpty(company.DamgaHash) || !company.SonIslemTarihi.HasValue)
@@ -148,7 +169,7 @@ public sealed class SiteService
     private static (bool, string) Engelle(string mesaj) => (false, mesaj);
 
     // ── Yardımcı: zaman damgası güncelle ──────────────────────
-    private static void AktifZamaniGuncelle(Company company, DateTime zaman)
+    private void AktifZamaniGuncelle(Company company, DateTime zaman)
     {
         company.SonIslemTarihi = zaman;
         company.DamgaHash = DamgaHashiOlustur(
@@ -170,10 +191,10 @@ public sealed class SiteService
             _logger.LogWarning(ex,
                 "Damga kaydedilemedi (DbUpdateException) — companyId={Id}", companyId);
         }
-        catch (Microsoft.Data.Sqlite.SqliteException ex) when (ex.SqliteErrorCode == 5)
+        catch (Npgsql.NpgsqlException ex)
         {
             _logger.LogWarning(ex,
-                "Damga kaydedilemedi (SQLite kilitli) — companyId={Id}", companyId);
+                "Damga kaydedilemedi (veritabanı geçici olarak meşgul) — companyId={Id}", companyId);
         }
     }
 
@@ -276,18 +297,21 @@ public sealed class SiteService
             }
         }
 
-        // ── Katman 4: Donanım Klonlama ─────────────────────────
-        if (string.IsNullOrEmpty(company.DonanimKimligi) || company.DonanimKimligi == "BEKLIYOR")
+        // ── Katman 4: Donanım Klonlama (SADECE masaüstü/kiosk modunda aktif) ──
+        if (_donanimKilidiAktif)
         {
-            company.DonanimKimligi = guncelKimlik;
-        }
-        else if (!string.Equals(company.DonanimKimligi, guncelKimlik, StringComparison.Ordinal))
-        {
-            _logger.LogCritical(
-                "Donanım uyuşmazlığı — companyId={Id}, kayitli={Kayitli}, guncel={Guncel}",
-                companyId, company.DonanimKimligi, guncelKimlik);
+            if (string.IsNullOrEmpty(company.DonanimKimligi) || company.DonanimKimligi == "BEKLIYOR")
+            {
+                company.DonanimKimligi = guncelKimlik;
+            }
+            else if (!string.Equals(company.DonanimKimligi, guncelKimlik, StringComparison.Ordinal))
+            {
+                _logger.LogCritical(
+                    "Donanım uyuşmazlığı — companyId={Id}, kayitli={Kayitli}, guncel={Guncel}",
+                    companyId, company.DonanimKimligi, guncelKimlik);
 
-            return Engelle("🛑 LİSANS İHLALİ! Bu veritabanı başka bilgisayardan kopyalanmış.");
+                return Engelle("🛑 LİSANS İHLALİ! Bu veritabanı başka bilgisayardan kopyalanmış.");
+            }
         }
 
         // ── Katman 5: Zaman Damgasını Güncelle (1 dk toleranslı)
@@ -431,9 +455,9 @@ public sealed class SiteService
             _db.Set<SatinAlmaGecmisi>().Add(new SatinAlmaGecmisi
             {
                 CompanyId = company.Id,
-                Tarih = DateTime.UtcNow,
+                Tarih = ZamanMotoru.SimdiTurkiye(),
                 AlinanJetonSayisi = adet,
-                OdenenTutar = adet * 2000
+                OdenenTutar = adet * 3500
             });
 
             await _db.SaveChangesAsync();
@@ -487,23 +511,30 @@ public sealed class SiteService
         if (girilenKod != dogruSifre.ToString())
             return (false, "❌ Geçersiz veya tarihi geçmiş şifre!", 0);
 
-        // ── Daha önce kullanıldı mı? ───────────────────────────
-        bool dahaOnceKullanildi = await _db.Set<KullanilanSifre>()
-            .AnyAsync(k => k.CompanyId == companyId && k.Sifre == girilenKod);
-
-        if (dahaOnceKullanildi)
-            return (false, "❌ Bu şifre daha önce kullanılmış!", 0);
-
-        // ── Transaction: kaydet + jeton ver ───────────────────
+        // ── Transaction: "daha önce kullanıldı mı" kontrolü + kaydet + jeton ver ──
+        // 🚀 ÇİFTE KULLANIM ZIRHI: Kontrol artık transaction İÇİNDE (Serializable
+        // izolasyonla) yapılıyor, ayrıca (CompanyId, Sifre) üzerinde DB seviyesinde
+        // unique index var (Configurations/KullanilanSifreConfiguration.cs). İki eşzamanlı
+        // istek aynı kodu göndermeye çalışırsa, biri transaction'da diğerini bekler,
+        // ikincisi ya "daha önce kullanıldı" kontrolünde ya da unique index'te yakalanır.
         await using var tx = await _db.Database.BeginTransactionAsync(
             System.Data.IsolationLevel.Serializable);
         try
         {
+            bool dahaOnceKullanildi = await _db.Set<KullanilanSifre>()
+                .AnyAsync(k => k.CompanyId == companyId && k.Sifre == girilenKod);
+
+            if (dahaOnceKullanildi)
+            {
+                await tx.RollbackAsync();
+                return (false, "❌ Bu şifre daha önce kullanılmış!", 0);
+            }
+
             _db.Set<KullanilanSifre>().Add(new KullanilanSifre
             {
                 CompanyId = companyId,
                 Sifre = girilenKod,
-                KullanımTarihi = DateTime.UtcNow
+                KullanımTarihi = ZamanMotoru.SimdiTurkiye()
             });
 
             company.AllowedActiveSiteCount++;
@@ -513,6 +544,13 @@ public sealed class SiteService
             await tx.CommitAsync();
 
             return (true, "✅ Şifre onaylandı! 1 Jeton yüklendi.", company.AllowedActiveSiteCount);
+        }
+        catch (DbUpdateException)
+        {
+            // Unique index ihlali: yarış durumunda aynı kodu neredeyse aynı anda
+            // gönderen ikinci istek buraya düşer.
+            await tx.RollbackAsync();
+            return (false, "❌ Bu şifre daha önce kullanılmış!", 0);
         }
         catch
         {

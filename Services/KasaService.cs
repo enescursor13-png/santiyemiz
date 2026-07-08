@@ -40,10 +40,13 @@ public class KasaService : IKasaService
             .SumAsync(k => k.Yon == KasaIslemYonu.Giris ? k.Tutar : -k.Tutar);
     }
 
-    private async Task KasaBakiyeKontrolEtAsync(int kasaId, decimal istenenTutar)
+    // 🚀 BİLİNÇLİ TASARIM: Patron, kasada yeterli bakiye olmasa da avans/transfer
+    // yapabilsin isteniyor (kasa eksiye düşebilir). Bu yüzden burada kasıtlı olarak
+    // hiçbir "yetersiz bakiye" kontrolü/throw yapılmıyor — sadece ileride ihtiyaç
+    // olursa (örn. bakiye altında uyarı göstermek için) diye bakiye okunuyor.
+    private async Task<decimal> KasaBakiyeKontrolEtAsync(int kasaId, decimal istenenTutar)
     {
-        var mevcutBakiye = await GetKasaBakiyeAsync(kasaId);
-
+        return await GetKasaBakiyeAsync(kasaId);
     }
 
     public async Task<int> AvansVerAsync(AvansVerRequest request)
@@ -93,7 +96,7 @@ public class KasaService : IKasaService
                 IsciId = request.IsciId,
                 KasaId = islemYapilacakKasaId,
                 SantiyeId = request.SantiyeId,
-                Tutar = request.Tutar,
+                Tutar = Math.Abs(request.Tutar),
                 Tarih = hedefTarih,
                 OdemeTuru = request.OdemeTuru,
                 Aciklama = StringHelper.ToTitleCaseTr(request.Aciklama),
@@ -109,7 +112,7 @@ public class KasaService : IKasaService
                 KasaId = islemYapilacakKasaId,
                 PatronId = patron.Id,
                 SantiyeId = request.SantiyeId,
-                Tutar = request.Tutar,
+                Tutar = Math.Abs(request.Tutar),
                 Yon = KasaIslemYonu.Cikis,
                 HareketTipi = KasaHareketTipi.Avans,
                 ReferansTabloAdi = "Avanslar",
@@ -171,7 +174,7 @@ public class KasaService : IKasaService
                     KasaId = avans.KasaId,
                     PatronId = patronId,
                     SantiyeId = avans.SantiyeId,
-                    Tutar = avans.Tutar,
+                    Tutar = Math.Abs(avans.Tutar),
                     Yon = KasaIslemYonu.Giris,
                     HareketTipi = KasaHareketTipi.IadeTersKayit,
                     ReferansTabloAdi = "Avanslar",
@@ -245,7 +248,7 @@ public class KasaService : IKasaService
                 KasaId = patronBilgisi.KasaId.Value,
                 PatronId = request.PatronId,
                 SantiyeId = request.SantiyeId,
-                Tutar = request.Tutar,
+                Tutar = Math.Abs(request.Tutar),
                 Yon = KasaIslemYonu.Giris,
                 HareketTipi = KasaHareketTipi.ManuelGelir,
                 IslemTarihi = islemTarihi,
@@ -296,7 +299,7 @@ public class KasaService : IKasaService
                 KasaId = patronBilgisi.KasaId.Value,
                 PatronId = patronBilgisi.Id,
                 SantiyeId = request.SantiyeId,
-                Tutar = request.Tutar,
+                Tutar = Math.Abs(request.Tutar),
                 Yon = KasaIslemYonu.Cikis,
                 HareketTipi = KasaHareketTipi.ManuelGider,
                 IslemTarihi = islemTarihi,
@@ -326,6 +329,9 @@ public class KasaService : IKasaService
         if (request.GonderenKasaId == request.AliciKasaId)
             throw new BusinessException("Aynı kasaya transfer yapamazsın!");
 
+        if (request.Tutar <= 0)
+            throw new BusinessException("Patron, transfer tutarı 0 veya eksi bir rakam olamaz!");
+
         await using var transaction = await _context.Database.BeginTransactionAsync(System.Data.IsolationLevel.Serializable);
         try
         {
@@ -339,10 +345,12 @@ public class KasaService : IKasaService
             var simdiOffset = ZamanMotoru.SimdiTurkiye();
             var transferMuhuru = Guid.NewGuid();
 
+            var mutlakTutar = Math.Abs(request.Tutar);
+
             var cikis = new KasaHareketi
             {
                 KasaId = request.GonderenKasaId,
-                Tutar = request.Tutar,
+                Tutar = mutlakTutar,
                 Yon = KasaIslemYonu.Cikis,
                 HareketTipi = KasaHareketTipi.Transfer,
                 TransferGrupId = transferMuhuru,
@@ -353,7 +361,7 @@ public class KasaService : IKasaService
             var giris = new KasaHareketi
             {
                 KasaId = request.AliciKasaId,
-                Tutar = request.Tutar,
+                Tutar = mutlakTutar,
                 Yon = KasaIslemYonu.Giris,
                 HareketTipi = KasaHareketTipi.Transfer,
                 TransferGrupId = transferMuhuru,

@@ -39,7 +39,10 @@ public static class ZamanMotoru
             catch (TimeZoneNotFoundException)
             {
                 // 🛡️ Son çare (Balyoz Zırhı): Sistemde hiçbir saat dilimi dosyası yoksa bile çökmez! UTC+3 verir.
-                return DateTime.UtcNow.AddHours(3);
+                // Kind'ı bilinçli olarak Unspecified'a çeviriyoruz — fonksiyonun diğer tüm
+                // dönüş yolları (ConvertTimeFromUtc) zaten Unspecified döner, tutarlı olsun
+                // ve PostgreSQL'e (timestamp without time zone) yazılırken hata vermesin.
+                return DateTime.SpecifyKind(DateTime.UtcNow.AddHours(3), DateTimeKind.Unspecified);
             }
         }
     }

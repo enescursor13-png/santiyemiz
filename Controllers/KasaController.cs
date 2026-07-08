@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Authorization;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging;
@@ -6,6 +7,7 @@ using SantiyeAPI.DTOs;
 using SantiyeAPI.Data;
 using Microsoft.EntityFrameworkCore;
 using System;
+using System.Security.Claims;
 using SantiyeAPI.Models;
 using SantiyeAPI.Exceptions;
 
@@ -13,6 +15,7 @@ namespace SantiyeAPI.Controllers;
 
 [ApiController]
 [Route("api/[controller]")]
+[Authorize]
 public class KasaController : ControllerBase
 {
     private readonly IKasaService _kasaService;
@@ -60,13 +63,16 @@ public class KasaController : ControllerBase
         }
     }
     [HttpDelete("avans/{avansId}")]
-    public async Task<IActionResult> AvansIptalEt(int avansId, [FromQuery] string userId)
+    public async Task<IActionResult> AvansIptalEt(int avansId)
     {
-        // 🚨 CRITICAL SECURITY WARNING: TEKNİK BORÇ (TECHNICAL DEBT)
+        // 🛡️ ZIRH: İptal eden kullanıcının kimliği artık istemcinin gönderdiği
+        // (ve sahtesi kolayca yazılabilecek) bir query string parametresinden değil,
+        // giriş yaparken üretilen ve imzalanan JWT token'ın içindeki kimlikten okunuyor.
+        var userId = User.FindFirstValue(ClaimTypes.Name) ?? User.FindFirstValue(ClaimTypes.NameIdentifier);
         if (string.IsNullOrWhiteSpace(userId))
         {
-            _logger.LogWarning("Avans iptal isteği reddedildi: Kullanıcı ID eksik. Avans ID: {AvansId}", avansId);
-            return BadRequest(new { Success = false, Message = "İptal eden kullanıcı ID'si zorunludur!" });
+            _logger.LogWarning("Avans iptal isteği reddedildi: Oturum kimliği bulunamadı. Avans ID: {AvansId}", avansId);
+            return Unauthorized(new { Success = false, Message = "Oturumunuz doğrulanamadı, lütfen tekrar giriş yapın." });
         }
 
         _logger.LogInformation("Avans iptal isteği alındı. Avans ID: {AvansId}, İptal Eden: {UserId}", avansId, userId);

@@ -33,9 +33,11 @@ public class GunlukKayitConfiguration : IEntityTypeConfiguration<GunlukKayit>
 
               // 🚀 ÇİFT KAYIT ZIRHI (Concurrency Protection)
               // Aynı işçiye, aynı şantiyede, aynı günde 2. bir kayıt açılmasını VERİTABANI seviyesinde yasaklıyoruz.
+              // Not: PostgreSQL'de tanımlayıcılar köşeli parantezle değil çift tırnakla
+              // alıntılanır ve boolean değerler 0/1 değil true/false'tur (SQL Server sözdiziminden farklı).
               builder.HasIndex(g => new { g.IsciId, g.SantiyeId, g.Tarih })
                      .IsUnique()
-                     .HasFilter("[IsDeleted] = 0") // Sadece silinmemiş kayıtlar için benzersizlik ara
+                     .HasFilter("\"IsDeleted\" = false") // Sadece silinmemiş kayıtlar için benzersizlik ara
                      .HasDatabaseName("UX_GunlukKayit_TekKayitZirhi");
               
               builder.HasQueryFilter(k => !k.IsDeleted);

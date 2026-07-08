@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Authorization;
 namespace SantiyeAPI.Controllers;
 
 using Microsoft.AspNetCore.Mvc;
@@ -9,6 +10,7 @@ using SantiyeAPI.Services;
 
 [ApiController]
 [Route("api/[controller]")]
+[Authorize]
 public class IsciController : ControllerBase
 {
     private readonly IIsciService _isciService;

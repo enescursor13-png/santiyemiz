@@ -48,7 +48,9 @@ public class GlobalExceptionMiddleware
             Status = context.Response.StatusCode,
             Instance = context.Request.Path,
             Title = statusCode == HttpStatusCode.InternalServerError ? "Sunucu Hatası" : "İşlem Hatası",
-            Detail = exception.Message
+            Detail = statusCode == HttpStatusCode.InternalServerError
+                ? "Beklenmedik bir sunucu hatası oluştu. Lütfen tekrar deneyin."
+                : exception.Message
         };
 
         problemDetails.Extensions["traceId"] = context.TraceIdentifier;

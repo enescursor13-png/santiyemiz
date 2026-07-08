@@ -1,3 +1,5 @@
+using SantiyeAPI.Helpers;
+
 namespace SantiyeAPI.Models;
 
 public class SantiyeIsci
@@ -10,7 +12,7 @@ public class SantiyeIsci
 
     // 🎯 2. SENARYO (ŞANTİYEDEN ÇIKARMA) İÇİN GEREKLİ ALANLAR:
     public bool AktifMi { get; set; } = true; // Şantiyede çalışmaya devam ediyor mu?
-    public DateTime KatilmaTarihi { get; set; } = DateTime.UtcNow; // Şantiyeye ne zaman girdi?
+    public DateTime KatilmaTarihi { get; set; } = ZamanMotoru.SimdiTurkiye(); // Şantiyeye ne zaman girdi?
     public DateTime? AyrilmaTarihi { get; set; } // Şantiyeden ne zaman
     //  çıkarıldı?
     public bool IsDeleted { get; set; } // Yumuşak silme için

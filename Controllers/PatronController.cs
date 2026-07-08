@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using SantiyeAPI.Data;
@@ -28,6 +29,7 @@ namespace SantiyeAPI.Controllers
 
     [Route("api/[controller]")]
     [ApiController]
+    [Authorize]
     public class PatronController : ControllerBase
     {
         private readonly AppDbContext _context;

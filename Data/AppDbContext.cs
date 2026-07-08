@@ -19,6 +19,7 @@ public class AppDbContext : DbContext
     public DbSet<GunlukKayit> GunlukKayitlar { get; set; }
     public DbSet<Avans> Avanslar { get; set; }
     public DbSet<SantiyeIsci> SantiyeIsciler { get; set; }
+    public DbSet<SantiyeIsciGecmisi> SantiyeIsciGecmisleri { get; set; }
     public DbSet<MaasGecmisi> MaasGecmisleri { get; set; }
     // 🚀 YENİ EKLENEN FİNANS / KASA TABLOLARI (Eksik olan kısım burası!)
     public DbSet<Kasa> Kasalar { get; set; }
@@ -50,12 +51,28 @@ public class AppDbContext : DbContext
         {
             Id = 1,
             KullaniciAdi = "sword",
-            Sifre = "3978",
+            Sifre = "$2a$11$ZC1QVdefW1vTqeUPdPcEvOdbuoTy9xY7fvR/hOEnmzWJ1e.5fgxJu", // bcrypt("3978")
             Rol = "Sef",
             AdSoyad = "Muhammet Zeki"
         }
     );
 
-
+        // 🐘 POSTGRESQL UYUMLULUĞU: Uygulama tüm tarihleri Türkiye yerel saati olarak
+        // (ZamanMotoru.SimdiTurkiye(), Kind=Unspecified) tutuyor — UTC değil. SQLite bu
+        // konuda esnekti ama Npgsql varsayılan olarak "timestamp with time zone" sütununa
+        // sadece Kind=Utc DateTime yazılmasına izin veriyor. Burada tüm DateTime
+        // sütunlarını "timestamp without time zone" (saat dilimsiz, ham) olarak
+        // işaretliyoruz ki mevcut iş mantığı (ay/gün karşılaştırmaları vb.) değişmeden
+        // çalışmaya devam etsin.
+        foreach (var entityType in modelBuilder.Model.GetEntityTypes())
+        {
+            foreach (var property in entityType.GetProperties())
+            {
+                if (property.ClrType == typeof(DateTime) || property.ClrType == typeof(DateTime?))
+                {
+                    property.SetColumnType("timestamp without time zone");
+                }
+            }
+        }
     }
 }

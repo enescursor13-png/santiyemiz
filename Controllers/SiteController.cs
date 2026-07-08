@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using SantiyeApp.Services;
 using System.Threading.Tasks;
@@ -6,6 +7,7 @@ namespace SantiyeApp.Controllers
 {
     [ApiController]
     [Route("api/[controller]")]
+    [Authorize]
     public class SiteController : ControllerBase
     {
         private readonly SiteService _siteService;

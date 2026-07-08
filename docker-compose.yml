@@ -1,0 +1,25 @@
+services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_DB: santiyedb
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      - santiye_pg_data:/var/lib/postgresql/data
+
+  api:
+    build: .
+    ports:
+      - "5095:8080"
+    environment:
+      PORT: "8080"
+      ConnectionStrings__DefaultConnection: "Host=postgres;Port=5432;Database=santiyedb;Username=postgres;Password=postgres"
+      KioskMode__Enabled: "false"
+    depends_on:
+      - postgres
+
+volumes:
+  santiye_pg_data:

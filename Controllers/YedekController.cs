@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using System;
 using System.IO;
@@ -6,14 +7,18 @@ namespace SantiyeAPI.Controllers
 {
     [Route("api/[controller]")]
     [ApiController]
+    [Authorize]
     public class YedekController : ControllerBase
     {
         [HttpGet("indir")]
-        public IActionResult VeritabaniniIndir([FromQuery] string securityKey)
+        public IActionResult VeritabaniniIndir([FromQuery] string? securityKey)
         {
             // 🛡️ ASMA KİLİT: Şifre "Patron1453" değilse kapıdan çevir!
-            // Bu şifreyi kimse bilmeyecek, sadece HTML (Javascript) bilecek.
-            if (string.IsNullOrWhiteSpace(securityKey) || securityKey != "Patron1453")
+            // Anahtar öncelikle header'dan (X-Security-Key) okunur; query string
+            // sadece eski istemcilerle uyumluluk için yedek olarak kabul edilir
+            // (query string'ler sunucu/proxy loglarına düz metin olarak düşebilir).
+            var gelenAnahtar = Request.Headers["X-Security-Key"].FirstOrDefault() ?? securityKey;
+            if (string.IsNullOrWhiteSpace(gelenAnahtar) || gelenAnahtar != "Patron1453")
             {
                 return Unauthorized(new { mesaj = "Hop! Yetkisiz erişim. Güvenlik anahtarı geçersiz." });
             }
@@ -46,9 +51,9 @@ namespace SantiyeAPI.Controllers
                 // Dosyayı tarayıcıya zorla indirtiyoruz
                 return File(fileBytes, "application/octet-stream", indirilecekAd);
             }
-            catch (Exception ex)
+            catch (Exception)
             {
-                return StatusCode(500, new { mesaj = "Yedekleme sırasında hata oluştu: " + ex.Message });
+                return StatusCode(500, new { mesaj = "Yedekleme sırasında bir hata oluştu." });
             }
         }
     }

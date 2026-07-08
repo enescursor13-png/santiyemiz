@@ -11,7 +11,9 @@ public class KasaHareketiConfiguration : IEntityTypeConfiguration<KasaHareketi>
         // 🚀 KURAL 1: Tutar formatı ve Negatif Giriş Yasağı (Check Constraint)
         builder.Property(e => e.Tutar).HasColumnType("decimal(18,2)");
         
-        builder.ToTable("KasaHareketleri", t => t.HasCheckConstraint("CK_KasaHareketi_Tutar_Pozitif", "Tutar > 0"));
+        // Not: Sütun adı tırnaklanmış olmalı ("Tutar" değil "tutar" olarak aranmasın diye) —
+        // PostgreSQL tırnaksız tanımlayıcıları küçük harfe çevirir, SQLite'ta bu sorun yoktu.
+        builder.ToTable("KasaHareketleri", t => t.HasCheckConstraint("CK_KasaHareketi_Tutar_Pozitif", "\"Tutar\" > 0"));
 
         // 🚀 KURAL 2: Global Query Filter (Silinenleri asla getirme!)
         builder.HasQueryFilter(e => !e.IsDeleted);
