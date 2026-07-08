@@ -69,13 +69,16 @@ public sealed class SiteService
             {
                 var yanit = await _http.GetAsync(kaynak, HttpCompletionOption.ResponseHeadersRead);
 
-                if (!yanit.Headers.TryGetValues("Date", out var tarihler))
+                // 🛡️ ZIRH: Ham "Date" header string'ini CultureInfo.CurrentCulture ile
+                // (DateTime.TryParse(string)) ayrıştırmak yerine HttpHeaders'ın kendi
+                // RFC1123 ayrıştırıcısını (Headers.Date) kullanıyoruz — bu her zaman
+                // İngilizce/invariant ay isimleriyle çalışır. Aksi halde, sunucu Türkçe
+                // kültürlü bir ortamda çalışırsa "Jul" gibi İngilizce ay isimlerini hiç
+                // tanıyamaz ve bu kontrol sessizce hep başarısız olurdu.
+                if (yanit.Headers.Date is not { } internetZamani)
                     continue;
 
-                if (!DateTime.TryParse(tarihler.FirstOrDefault(), out DateTime internetUtc))
-                    continue;
-
-                double farkDk = Math.Abs((DateTime.UtcNow - internetUtc.ToUniversalTime()).TotalMinutes);
+                double farkDk = Math.Abs((DateTime.UtcNow - internetZamani.UtcDateTime).TotalMinutes);
                 return farkDk < SAAT_TOLERANS_DK;
             }
             catch { }
