@@ -244,9 +244,10 @@ public class IsciService : IIsciService
         // Eğer adamın borcu varsa veritabanını boşuna kilitlemeyip direkt hatayı fırlatıyoruz.
         if (!bakiyeSifir)
         {
+            var trKultur = CultureInfo.GetCultureInfo("tr-TR");
             string mesaj = netBakiye > 0
-                ? $"Hop Patron! Bu işçinin {netBakiye:N2} ₺ alacağı var. Önce hesabını kapatın."
-                : $"Hop Patron! Bu işçi {-netBakiye:N2} ₺ borçlu. Önce iadesini alın.";
+                ? $"Hop Patron! Bu işçinin {netBakiye.ToString("N2", trKultur)} ₺ alacağı var. Önce hesabını kapatın."
+                : $"Hop Patron! Bu işçi {(-netBakiye).ToString("N2", trKultur)} ₺ borçlu. Önce iadesini alın.";
 
             throw new InvalidOperationException(mesaj);
         }

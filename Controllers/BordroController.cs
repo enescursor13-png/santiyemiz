@@ -473,7 +473,7 @@ namespace SantiyeAPI.Controllers
                 await transaction.CommitAsync();
 
                 if (netOdenen == 0) return Ok(new { mesaj = $"{isci.Ad} adlı ustanın bu döneme kadarki hesabı mühürlendi." });
-                else return Ok(new { mesaj = $"{patron.Ad} kasasından {netOdenen:C2} ödeme yapıldı ve açık hesap kapatıldı." });
+                else return Ok(new { mesaj = $"{patron.Ad} kasasından {netOdenen.ToString("C2", trKultur)} ödeme yapıldı ve açık hesap kapatıldı." });
             }
             catch (Exception ex)
             {
@@ -1280,7 +1280,7 @@ namespace SantiyeAPI.Controllers
                     await _context.SaveChangesAsync();
                     await transaction.CommitAsync();
 
-                    return Ok(new { mesaj = $"{iadeTutari:N2} ₺ tahsil edildi, bu şantiyedeki borç sıfırlandı." });
+                    return Ok(new { mesaj = $"{iadeTutari.ToString("N2", CultureInfo.GetCultureInfo("tr-TR"))} ₺ tahsil edildi, bu şantiyedeki borç sıfırlandı." });
                 }
                 catch (Exception ex)
                 {
@@ -1404,7 +1404,7 @@ namespace SantiyeAPI.Controllers
                 await _context.SaveChangesAsync();
                 await transaction.CommitAsync();
 
-                return Ok(new { mesaj = $"Gerçek borç olan {gercekBorcTutari:N2} ₺ başarıyla devredildi ve mühürlendi." });
+                return Ok(new { mesaj = $"Gerçek borç olan {gercekBorcTutari.ToString("N2", CultureInfo.GetCultureInfo("tr-TR"))} ₺ başarıyla devredildi ve mühürlendi." });
             }
             catch (Exception ex)
             {

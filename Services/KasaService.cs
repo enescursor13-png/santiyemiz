@@ -1,4 +1,5 @@
 using System;
+using System.Globalization;
 using System.Linq;
 using System.Threading.Tasks;
 using Microsoft.EntityFrameworkCore;
@@ -59,7 +60,7 @@ public class KasaService : IKasaService
 
         decimal aylikMaksimumAvansLimiti = isci.GunlukUcret * 30;
         if (request.Tutar > aylikMaksimumAvansLimiti)
-            throw new BusinessException($"Hop Patron! {isci.Ad} Ustanın bir aylık hak edişi {aylikMaksimumAvansLimiti:N2} ₺. Bundan daha fazla tek seferlik avans verilemez.");
+            throw new BusinessException($"Hop Patron! {isci.Ad} Ustanın bir aylık hak edişi {aylikMaksimumAvansLimiti.ToString("N2", CultureInfo.GetCultureInfo("tr-TR"))} ₺. Bundan daha fazla tek seferlik avans verilemez.");
 
         await using var transaction = await _context.Database.BeginTransactionAsync();
         try
