@@ -506,7 +506,14 @@ namespace SantiyeAPI.Controllers
 
             // 🚀 PERFORMANS ZIRHI: Artık geçmiş aylardaki ödenmemişleri zorla çekmiyoruz!
             // Veritabanına sadece "Bana seçili ayın aralığını getir" diyoruz. Sorgu inanılmaz hızlandı.
-            var gunlukTask = _context.GunlukKayitlar
+            // 🛡️ ZIRH: İki sorgu da AYNI DbContext üzerinden gittiği için gerçek paralel
+            // (Task.WhenAll ile "aynı anda") çalıştırılamaz — EF Core tek bir DbContext'in
+            // aynı anda birden fazla komut çalıştırmasına izin vermez ("A second operation
+            // was started..." hatası). SQLite'ta bu yarış nadiren su yüzüne çıkıyordu,
+            // PostgreSQL'in gerçek asenkron ağ I/O'sunda neredeyse her seferinde patlıyordu.
+            // Çözüm: art arda (sıralı) await etmek — iki hafif, indeksli sorgu için performans
+            // farkı önemsiz.
+            var gunlukVeriler = await _context.GunlukKayitlar
                 .AsNoTracking()
                 .Where(g => g.IsciId == isciId)
                 .Where(g => !santiyeId.HasValue || g.SantiyeId == santiyeId.Value)
@@ -515,7 +522,7 @@ namespace SantiyeAPI.Controllers
                 .Select(g => new { g.Tarih, g.CalismaKatsayisi, g.Aciklama, g.Yevmiye, g.OdendiMi, SantiyeAd = g.Santiye != null ? g.Santiye.Ad : "Bilinmiyor" })
                 .ToListAsync();
 
-            var avansTask = _context.Avanslar
+            var avansVeriler = await _context.Avanslar
                 .AsNoTracking()
                 .Where(a => a.IsciId == isciId)
                 .Where(a => !santiyeId.HasValue || a.SantiyeId == santiyeId.Value)
@@ -523,10 +530,6 @@ namespace SantiyeAPI.Controllers
                 .OrderByDescending(a => a.Tarih)
                 .Select(a => new { a.Tarih, a.Tutar, a.OdemeTuru, a.Aciklama, a.OdendiMi, SantiyeAd = a.Santiye != null ? a.Santiye.Ad : "Bilinmiyor" })
                 .ToListAsync();
-
-            await Task.WhenAll(gunlukTask, avansTask);
-            var gunlukVeriler = gunlukTask.Result;
-            var avansVeriler = avansTask.Result;
 
             // 🚀 MATEMATİK: Sadece veritabanından süzülüp gelen o aya ait veriler toplanıyor!
             var toplamHakedis = gunlukVeriler.Where(g => !g.OdendiMi).Sum(g => (decimal)g.Yevmiye);
