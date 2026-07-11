@@ -64,11 +64,20 @@ public class PuantajController : ControllerBase
             return BadRequest(new { detail = "Gelecek tarihe yoklama girilemez!" });
 
         // 🛡️ GÜVENLİ: Null değerleri (özellikle GunlukUcret) garanti altına aldık
+        // 🚀 KATILMA TARİHİ ZIRHI: HizliKayit ile tutarlı olsun diye, işçi şantiyeye
+        // katılmadan önceki tarihler için toplu yoklamaya da dahil edilmiyor.
         var aktifIsciBilgileri = await _context.SantiyeIsciler
             .AsNoTracking()
-            .Where(si => si.SantiyeId == request.SantiyeId && si.AktifMi && si.Isci != null && !si.Isci.IsDeleted)
+            .Where(si => si.SantiyeId == request.SantiyeId && si.AktifMi && si.Isci != null && !si.Isci.IsDeleted
+                && si.KatilmaTarihi.Date <= hedefTarih)
             .Select(si => new { si.IsciId, GunlukUcret = si.Isci!.GunlukUcret })
             .ToDictionaryAsync(si => si.IsciId, si => si.GunlukUcret);
+
+        var henuzKatilmamisSayisi = await _context.SantiyeIsciler
+            .AsNoTracking()
+            .Where(si => si.SantiyeId == request.SantiyeId && si.AktifMi && si.Isci != null && !si.Isci.IsDeleted
+                && si.KatilmaTarihi.Date > hedefTarih)
+            .CountAsync();
 
         if (aktifIsciBilgileri.Count == 0)
             return BadRequest(new { detail = "Bu şantiyeye atanmış aktif işçi bulunamadı." });
@@ -137,10 +146,11 @@ public class PuantajController : ControllerBase
 
             return Ok(new
             {
-                mesaj = $"{eklenen + guncellenen} işçi başarıyla eklendi/güncellendi. (Kapalı hesap nedeniyle atlanan: {atlanan})",
+                mesaj = $"{eklenen + guncellenen} işçi başarıyla eklendi/güncellendi. (Kapalı hesap nedeniyle atlanan: {atlanan}, henüz katılmadığı için atlanan: {henuzKatilmamisSayisi})",
                 eklenen,
                 guncellenen,
                 atlanan,
+                henuzKatilmamisSayisi,
                 toplamIsci = aktifIsciBilgileri.Count
             });
         }
