@@ -5,6 +5,8 @@ using SantiyeAPI.Data;
 using SantiyeAPI.Helpers;
 using SantiyeAPI.Models;
 using SantiyeApp.Services; // SantiyeIsci ara tablosunu tanımak için şart!
+using System.Globalization; // İşe giriş tarihi düzenlemede katı tarih parse için
+using Microsoft.AspNetCore.Mvc.ModelBinding; // Atamada opsiyonel body (EmptyBodyBehavior) için
 
 namespace SantiyeAPI.Controllers;
 
@@ -107,7 +109,8 @@ public class SantiyeController : ControllerBase
             Meslek = si.Isci.Meslek,
             TcNo = si.Isci.TcNo,
             Telefon = si.Isci.Telefon,
-            GunlukUcret = si.Isci.GunlukUcret
+            GunlukUcret = si.Isci.GunlukUcret,
+            KatilmaTarihi = si.KatilmaTarihi // 📅 İşe giriş tarihini düzenleme butonu için (frontend prefill)
         })
         .ToListAsync();
 
@@ -137,6 +140,48 @@ public class SantiyeController : ControllerBase
         return Ok(new { Mesaj = "Ustanın şantiye çıkışı yapıldı, sayı güncellendi." });
     }
 
+    // 📅 İŞE GİRİŞ TARİHİNİ DÜZENLE (GEÇMİŞE DÖNÜK PUANTAJ İÇİN)
+    // Senaryo: İşçi şantiyeye bugün (ör. 15 Temmuz) atandı ama aslında daha önce
+    // (ör. 10 Temmuz) çalışmaya başlamıştı. Puantaj bariyeri KatilmaTarihi'ni okuduğu
+    // için, giriş tarihini geriye çekince o tarihten sonrasına puantaj girilebilir hale gelir.
+    // NOT: Bu metot SADECE mevcut satırın KatilmaTarihi alanını günceller — başka
+    // hiçbir mantığı (puantaj, arşiv, çıkış) değiştirmez.
+    public class KatilmaTarihiGuncelleDto
+    {
+        public string Tarih { get; set; } = string.Empty; // "yyyy-MM-dd"
+    }
+
+    [HttpPut("{santiyeId}/isci/{isciId}/katilma-tarihi")]
+    public async Task<IActionResult> KatilmaTarihiGuncelle(int santiyeId, int isciId, [FromBody] KatilmaTarihiGuncelleDto dto)
+    {
+        // 🛡️ 1. KATI TARİH PARSE: Sadece yyyy-MM-dd kabul edilir
+        if (dto == null || !DateTime.TryParseExact(dto.Tarih, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out var yeniTarih))
+            return BadRequest(new { detail = "Tarih formatı hatalı. YYYY-AA-GG formatında olmalıdır." });
+
+        var yeniGiris = yeniTarih.Date;
+
+        // 🛡️ 2. KAYIT KONTROLÜ: İşçi bu şantiyeye gerçekten atanmış mı?
+        var kayit = await _context.SantiyeIsciler
+            .FirstOrDefaultAsync(si => si.SantiyeId == santiyeId && si.IsciId == isciId);
+
+        if (kayit == null)
+            return NotFound(new { detail = "Bu usta bu şantiyeye atanmamış." });
+
+        // 🛡️ 3. GELECEK TARİH ZIRHI
+        var bugun = ZamanMotoru.SimdiTurkiye().Date;
+        if (yeniGiris > bugun)
+            return BadRequest(new { detail = "İşe giriş tarihi gelecekte olamaz!" });
+
+        // 🛡️ 4. AYRILMA TUTARLILIĞI: İşçi ayrıldıysa, giriş tarihi çıkış tarihinden sonra olamaz
+        if (kayit.AyrilmaTarihi.HasValue && yeniGiris > kayit.AyrilmaTarihi.Value.Date)
+            return BadRequest(new { detail = $"İşe giriş tarihi, ayrılma tarihinden ({kayit.AyrilmaTarihi.Value:dd.MM.yyyy}) sonra olamaz!" });
+
+        kayit.KatilmaTarihi = yeniGiris;
+        await _context.SaveChangesAsync();
+
+        return Ok(new { mesaj = $"İşe giriş tarihi {yeniGiris:dd.MM.yyyy} olarak güncellendi." });
+    }
+
     // --- ŞANTİYE EKLEME (Bu kısım zaten güzeldi, aynen kalıyor) ---
     public class SantiyeCreateDto
     {
@@ -164,8 +209,15 @@ public class SantiyeController : ControllerBase
 
 
     // 🏗️ ŞANTİYEYE İŞÇİ GÖREVLENDİRME (REAKTİVASYONLU ZIRHLI METOT)
+    // 📅 OPSİYONEL: BaslamaTarihi gönderilirse, işçinin işe giriş tarihi o gün kabul edilir
+    // (geçmişe dönük puantaj için). Gönderilmezse eski davranış aynen korunur → bugün.
+    public class IsciAtaDto
+    {
+        public string? BaslamaTarihi { get; set; } // "yyyy-MM-dd" (opsiyonel)
+    }
+
     [HttpPost("{santiyeId}/isci-ata/{isciId}")]
-    public async Task<IActionResult> IsciAta(int santiyeId, int isciId)
+    public async Task<IActionResult> IsciAta(int santiyeId, int isciId, [FromBody(EmptyBodyBehavior = EmptyBodyBehavior.Allow)] IsciAtaDto? dto = null)
     {
         // 1. ŞANTİYE KONTROLÜ
         var santiye = await _context.Santiyeler.FindAsync(santiyeId);
@@ -184,6 +236,19 @@ public class SantiyeController : ControllerBase
 
         TimeZoneInfo turkeyZone = TimeZoneInfo.FindSystemTimeZoneById(tzId);
         DateTime turkiyeSaati = TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, turkeyZone);
+
+        // 📅 OPSİYONEL İŞE BAŞLAMA TARİHİ: Boşsa bugün (eski davranış), doluysa seçilen gün.
+        DateTime katilmaTarihi = turkiyeSaati;
+        if (dto != null && !string.IsNullOrWhiteSpace(dto.BaslamaTarihi))
+        {
+            if (!DateTime.TryParseExact(dto.BaslamaTarihi, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out var secilenBaslama))
+                return BadRequest(new { detail = "İşe başlama tarihi formatı hatalı. YYYY-AA-GG formatında olmalıdır." });
+
+            if (secilenBaslama.Date > turkiyeSaati.Date)
+                return BadRequest(new { detail = "İşe başlama tarihi gelecekte olamaz!" });
+
+            katilmaTarihi = secilenBaslama.Date;
+        }
 
         // 3. 🎯 COMPOSITE KEY KORUMASI VE REAKTİVASYON
         var mevcutSantiyeKaydi = await _context.SantiyeIsciler
@@ -213,7 +278,7 @@ public class SantiyeController : ControllerBase
                 });
 
                 mevcutSantiyeKaydi.AktifMi = true; // Şalteri kaldır, adamı aktif et
-                mevcutSantiyeKaydi.KatilmaTarihi = turkiyeSaati; // İşe girişini bugün olarak güncelle
+                mevcutSantiyeKaydi.KatilmaTarihi = katilmaTarihi; // İşe girişini seçilen (yoksa bugün) tarihe ayarla
                 mevcutSantiyeKaydi.AyrilmaTarihi = null; // Çıkış tarihini temizle (Çünkü artık çalışıyor)
 
                 // NOT: Burada _context.Add DEMİYORUZ! Mevcut kaydı Update ediyoruz, PK patlamıyor.
@@ -226,7 +291,7 @@ public class SantiyeController : ControllerBase
             {
                 SantiyeId = santiyeId,
                 IsciId = isciId,
-                KatilmaTarihi = turkiyeSaati,
+                KatilmaTarihi = katilmaTarihi,
                 AktifMi = true
             };
             await _context.SantiyeIsciler.AddAsync(yeniAtama);
