@@ -50,8 +50,8 @@ public class AppDbContext : DbContext
         new Kullanici
         {
             Id = 1,
-            KullaniciAdi = "sword",
-            Sifre = "$2a$11$ZC1QVdefW1vTqeUPdPcEvOdbuoTy9xY7fvR/hOEnmzWJ1e.5fgxJu", // bcrypt("3978")
+            KullaniciAdi = "ahmetfurkan",
+            Sifre = "$2a$11$p.PApCHcjKiXJn8E3SflfOxlwxhcyYAEHr2ExFokjknFeJXaRuLY2", // bcrypt("sahin_38")
             Rol = "Sef",
             AdSoyad = "Muhammet Zeki"
         }

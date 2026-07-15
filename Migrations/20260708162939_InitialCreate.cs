@@ -433,7 +433,7 @@ namespace SantiyeAPI.Migrations
             migrationBuilder.InsertData(
                 table: "Kullanicilar",
                 columns: new[] { "Id", "AdSoyad", "KullaniciAdi", "Rol", "Sifre" },
-                values: new object[] { 1, "Muhammet Zeki", "sword", "Sef", "$2a$11$ZC1QVdefW1vTqeUPdPcEvOdbuoTy9xY7fvR/hOEnmzWJ1e.5fgxJu" });
+                values: new object[] { 1, "Muhammet Zeki", "ahmetfurkan", "Sef", "$2a$11$p.PApCHcjKiXJn8E3SflfOxlwxhcyYAEHr2ExFokjknFeJXaRuLY2" });
 
             migrationBuilder.CreateIndex(
                 name: "IX_Avanslar_IsciId",

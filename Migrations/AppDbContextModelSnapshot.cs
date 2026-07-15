@@ -395,9 +395,9 @@ namespace SantiyeAPI.Migrations
                         {
                             Id = 1,
                             AdSoyad = "Muhammet Zeki",
-                            KullaniciAdi = "sword",
+                            KullaniciAdi = "ahmetfurkan",
                             Rol = "Sef",
-                            Sifre = "$2a$11$ZC1QVdefW1vTqeUPdPcEvOdbuoTy9xY7fvR/hOEnmzWJ1e.5fgxJu"
+                            Sifre = "$2a$11$p.PApCHcjKiXJn8E3SflfOxlwxhcyYAEHr2ExFokjknFeJXaRuLY2"
                         });
                 });
 
