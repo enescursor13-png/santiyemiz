@@ -378,7 +378,10 @@ namespace SantiyeAPI.Controllers
             {
                 // Ekrandan parça gelmediyse, normal ay sınırını kullan
                 if (DateTime.TryParseExact(dto.Ay, "yyyy-MM", CultureInfo.InvariantCulture, DateTimeStyles.None, out var seciliTarih))
-                    bitis = new DateTime(seciliTarih.Year, seciliTarih.Month, 1).AddMonths(1);
+                {
+                    baslangic = new DateTime(seciliTarih.Year, seciliTarih.Month, 1);
+                    bitis = baslangic.AddMonths(1);
+                }
             }
 
             var acikPuantajlar = await _context.GunlukKayitlar
@@ -1409,7 +1412,7 @@ namespace SantiyeAPI.Controllers
                     KasaId = guvenliKasaId,
                     SantiyeId = request.SantiyeId,
                     Tutar = gercekBorcTutari, // 👈 GÜVENLİ TUTAR
-                    Tarih = kesimTarihiSiniri.AddDays(1),
+                    Tarih = kesimTarihiSiniri,
                     OdemeTuru = "Geçmiş Ay Borcu",
                     Aciklama = $"{request.Ay} ayından devreden borç bakiyesi",
                     OdendiMi = false,
