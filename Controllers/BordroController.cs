@@ -351,38 +351,30 @@ namespace SantiyeAPI.Controllers
             var patron = await _context.Patronlar.AsNoTracking().FirstOrDefaultAsync(p => p.Id == dto.PatronId);
             if (patron is not { KasaId: int guvenliKasaId }) return BadRequest("Patronun cüzdanı (kasası) tanımlı değil!");
 
-            // 🚀 EĞER EKRANDAN (Kısım 1 / Kısım 2) GİBİ SPESİFİK TARİH GELDİYSE ONU KULLAN
+            // 🗓️ KESİM PENCERESİ = SEÇİLEN AYIN TAMAMI
+            // Eskiden ekrandan gelen DonemBaslangic/DonemBitis (satırın "3 - 19 Ağu" rozeti)
+            // hem puantaja hem AVANSA uygulanıyordu. Rozet sadece ÇALIŞILAN günlerden
+            // üretildiği için, o aralığın dışında kalan avanslar (örn. ayın 1'inde verilen
+            // avans, ya da HizliOdemeYap'ın ayın 25'ine yazdığı asgari ödeme) ne netten
+            // düşülüyor ne de mühürleniyordu; usta bize borçlu kalıyor ama ekranda
+            // görünmüyordu. Artık pencere daima seçilen ayın tamamı.
+            //
+            // Kısmi (ay ortası) kesim yine çalışır: ayıran şey tarih değil MÜHÜR.
+            // 13 Ağustos'ta kesim yapılınca o güne kadar açık olan her şey mühürlenir,
+            // 25 Ağustos'ta aynı ay tekrar seçilince sadece aradan eklenenler gelir.
 
             // 🛡️ ZIRH 1: KIYAMET GÜNÜ BEKÇİSİ (GUARD CLAUSE)
-            // Eğer ne spesifik bir bitiş tarihi var, ne de geçerli bir ay var ise (Tümü seçilmişse) işlemi durdur!
-            if (string.IsNullOrWhiteSpace(dto.DonemBitis) && (string.IsNullOrWhiteSpace(dto.Ay) || dto.Ay == "tumu"))
+            // Geçerli bir ay yoksa (Tümü seçilmişse) işlemi durdur!
+            if (string.IsNullOrWhiteSpace(dto.Ay) || dto.Ay == "tumu")
             {
-                return BadRequest(new { mesaj = "Hop Patron! Hesap mühürlemek için mutlaka belirli bir AY veya BİTİŞ TARİHİ seçmelisin. Sınırsız (Tüm Zamanlar) mühürleme yapılamaz!" });
+                return BadRequest(new { mesaj = "Hop Patron! Hesap mühürlemek için mutlaka belirli bir AY seçmelisin. Sınırsız (Tüm Zamanlar) mühürleme yapılamaz!" });
             }
 
-            DateTime baslangic = DateTime.MinValue;
-            DateTime bitis = DateTime.MaxValue;
+            if (!DateTime.TryParseExact(dto.Ay, "yyyy-MM", CultureInfo.InvariantCulture, DateTimeStyles.None, out var seciliTarih))
+                return BadRequest(new { mesaj = "Ay formatı hatalı! Beklenen: YYYY-AA (Örn: 2026-08)" });
 
-            if (!string.IsNullOrWhiteSpace(dto.DonemBaslangic) && DateTime.TryParse(dto.DonemBaslangic, out var db))
-                baslangic = db.Date;
-
-            if (!string.IsNullOrWhiteSpace(dto.DonemBitis) && DateTime.TryParse(dto.DonemBitis, out var dbt))
-            {
-                // 🛡️ ZIRH 2: Overflow (Taşma) Koruması! Çok uçuk bir tarih girilip AddDays(1) ile patlamasını engeller.
-                if (dbt.Date >= DateTime.MaxValue.Date.AddDays(-2))
-                    return BadRequest(new { mesaj = "Girdiğiniz bitiş tarihi çok büyük!" });
-
-                bitis = dbt.Date.AddDays(1); // Günü kapsamak için +1 gün
-            }
-            else if (string.IsNullOrWhiteSpace(dto.DonemBaslangic) && !string.IsNullOrWhiteSpace(dto.Ay) && dto.Ay != "tumu")
-            {
-                // Ekrandan parça gelmediyse, normal ay sınırını kullan
-                if (DateTime.TryParseExact(dto.Ay, "yyyy-MM", CultureInfo.InvariantCulture, DateTimeStyles.None, out var seciliTarih))
-                {
-                    baslangic = new DateTime(seciliTarih.Year, seciliTarih.Month, 1);
-                    bitis = baslangic.AddMonths(1);
-                }
-            }
+            DateTime baslangic = new DateTime(seciliTarih.Year, seciliTarih.Month, 1);
+            DateTime bitis = baslangic.AddMonths(1);
 
             var acikPuantajlar = await _context.GunlukKayitlar
                 .Where(g => g.IsciId == dto.IsciId && g.SantiyeId == dto.SantiyeId && !g.OdendiMi && g.Tarih >= baslangic && g.Tarih < bitis)
